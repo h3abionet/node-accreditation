@@ -17,7 +17,7 @@ if(!require('maps'))
 
 ```{r}
 # Note: set up an API key see documentation below
-register_google(key = "AIzaSyCLi864ZnR4bWfh8ru_fDEpIPs-GOrMMXU", write = TRUE)
+register_google(key = "APIKey", write = TRUE)
 ```
 
 A very last minute, hacked together R script (apologies Python folks) to get plots set up for the SAB :)
@@ -131,8 +131,10 @@ p2
 ```
 
 ```{r fig.width=6, fig.height=6}
+foo <- dplyr::filter(nodeData,Attempted == 0)
+foo <- dplyr::filter(foo, Country != 'USA')
 p2 + geom_point(aes(x = Longitude, y = Latitude),
-               data = dplyr::filter(nodeData,Attempted == 0), size = 8, color = "black")
+               data = foo, size = 8, color = "black")
 ```
 
 This handles the border issue with Morocco.
@@ -223,22 +225,26 @@ tot.yrs <- data.frame("Year" = 2014:2019)
 for (acc in colnames(years)) {
   yr.tbl <- as.data.frame(table(years[,acc]))
   colnames(yr.tbl) <- c("Year", acc)
+  
   yr.tbl$Year <- as.integer(as.character(yr.tbl$Year))
   tot.yrs <- left_join(tot.yrs, yr.tbl, by = "Year")
 }
 
 tot.yrs[is.na(tot.yrs)] <- 0
+
+#things are being coersced to double, these should be int
+tot.yrs[,2:5] <- sapply(tot.yrs[,2:5], as.integer)
 tot.yrs
 ```
 
 
 ```{r}
-
 # gather is not working here?
 tmp <- tot.yrs %>% reshape2::melt("Year", variable = "Exercise", value.name = "Total")
 
 ggplot(tmp, aes(x = Year, y = Total)) +  geom_col(aes(fill=Exercise)) +
-  scale_x_continuous("Year", breaks = 2014:2019, labels=2014:2019)
+  scale_x_continuous("Year", breaks = 2014:2019, labels=2014:2019) +
+  scale_y_continuous("Total", breaks = 1:11, labels=1:11, minor_breaks = FALSE)
 
 ```
 
