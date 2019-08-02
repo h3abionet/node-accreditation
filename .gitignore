@@ -1,0 +1,4 @@
+.httr-oauth
+*.png
+.DS_Store
+.csv
