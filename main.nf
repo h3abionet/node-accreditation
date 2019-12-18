@@ -159,6 +159,26 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
    return yaml_file
 }
 
+/*
+ * Create channels for input fastq files
+ */
+// if (params.single_end) {
+//     ch_design_reads_csv
+//         .splitCsv(header:true, sep:',')
+//         .map { row -> [ row.sample_id, [ file(row.fastq_1, checkIfExists: true) ] ] }
+//         .into { ch_raw_reads_fastqc;
+//                 ch_raw_reads_trimgalore }
+// } else {
+
+// At the moment we're only running with the already split files (which are also CSV)
+// and which are all PE data; we can make this more flexible as needed
+ch_design_reads_csv
+    .splitCsv(header:true, sep:',')
+    .map { row -> [ row.sample_id, [ file(row.fastq_1, checkIfExists: true), file(row.fastq_2, checkIfExists: true) ] ] }
+    .into { ch_raw_reads_fastqc;
+            ch_raw_reads_trimgalore }
+// }
+
 
 /*
  * Parse software version numbers
@@ -186,11 +206,11 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
 // }
 
 
-
-/*
- * STEP 1 - FastQC
+/* 
+ * STEP 1: Split original CSV into subgroups
  */
-// process fastqc {
+
+// process splitCSV {
 //     tag "$name"
 //     publishDir "${params.outdir}/fastqc", mode: 'copy',
 //         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
@@ -210,29 +230,23 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
 
 
 /*
- * STEP 2 - MultiQC
+ * STEP 2 - Subsample the FASTQ files
  */
-// process multiqc {
-//     publishDir "${params.outdir}/MultiQC", mode: 'copy'
+
+// process splitCSV {
+//     tag "$name"
+//     publishDir "${params.outdir}/fastqc", mode: 'copy',
+//         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 // 
 //     input:
-//     file multiqc_config from ch_multiqc_config
-//     // TODO nf-core: Add in log files from your new processes for MultiQC to find!
-//     file ('fastqc/*') from fastqc_results.collect().ifEmpty([])
-//     file ('software_versions/*') from software_versions_yaml.collect()
-//     file workflow_summary from create_workflow_summary(summary)
+//     set val(name), file(reads) from read_files_fastqc
 // 
 //     output:
-//     file "*multiqc_report.html" into multiqc_report
-//     file "*_data"
-//     file "multiqc_plots"
+//     file "*_fastqc.{zip,html}" into fastqc_results
 // 
 //     script:
-//     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
-//     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
-//     // TODO nf-core: Specify which MultiQC modules to use with -m for a faster run time
 //     """
-//     multiqc -f $rtitle $rfilename --config $multiqc_config .
+//     fastqc -q $reads
 //     """
 // }
 
