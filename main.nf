@@ -27,6 +27,9 @@ def helpMessage() {
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: conda, docker, singularity, awsbatch, test and more.
 
+    Optional arguments:
+      -seed                         A random seed that fed to seqtk for subsamping.
+
     """.stripIndent()
 }
 
@@ -86,26 +89,26 @@ if( workflow.profile == 'awsbatch') {
  * Create a channel for input read files
  */
 
-if(params.readPaths){
-    if(params.singleEnd){
-        Channel
-            .from(params.readPaths)
-            .map { row -> [ row[0], [file(row[1][0])]] }
-            .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { read_files_fastqc; read_files_trimming }
-    } else {
-        Channel
-            .from(params.readPaths)
-            .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
-            .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { read_files_fastqc; read_files_trimming }
-    }
-} else {
-    Channel
-        .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
-        .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-        .into { read_files_fastqc; read_files_trimming }
-}
+// if(params.readPaths){
+//     if(params.singleEnd){
+//         Channel
+//             .from(params.readPaths)
+//             .map { row -> [ row[0], [file(row[1][0])]] }
+//             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+//             .into { read_files_fastqc; read_files_trimming }
+//     } else {
+//         Channel
+//             .from(params.readPaths)
+//             .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
+//             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+//             .into { read_files_fastqc; read_files_trimming }
+//     }
+// } else {
+//     Channel
+//         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
+//         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+//         .into { read_files_fastqc; read_files_trimming }
+// }
 
 
 // Header log info
@@ -115,6 +118,7 @@ if(workflow.revision) summary['Pipeline Release'] = workflow.revision
 summary['Run Name']         = custom_runName ?: workflow.runName
 // TODO nf-core: Report custom parameters here
 summary['CSV']              = params.csv
+summary['Dir']              = params.dir
 // summary['Fasta Ref']        = params.fasta
 // summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Max Resources']    = "$params.max_memory memory, $params.max_cpus cpus, $params.max_time time per job"
@@ -172,11 +176,12 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
 
 // At the moment we're only running with the already split files (which are also CSV)
 // and which are all PE data; we can make this more flexible as needed
-ch_design_reads_csv
+Channel.fromPath(params.csv)
     .splitCsv(header:true, sep:',')
-    .map { row -> [ row.sample_id, [ file(row.fastq_1, checkIfExists: true), file(row.fastq_2, checkIfExists: true) ] ] }
-    .into { ch_raw_reads_fastqc;
-            ch_raw_reads_trimgalore }
+    .map { row -> [ row.SampleName, [ file("${params.dir}/${row.R1}", checkIfExists: true), file("${params.dir}/${row.R2}", checkIfExists: true) ] ] }
+    .into { ch_raw_reads_seqtk }
+
+//             
 // }
 
 
@@ -227,49 +232,76 @@ ch_design_reads_csv
 //     """
 // }
 
-
-
 /*
  * STEP 2 - Subsample the FASTQ files
  */
 
-// process splitCSV {
-//     tag "$name"
-//     publishDir "${params.outdir}/fastqc", mode: 'copy',
-//         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
-// 
-//     input:
-//     set val(name), file(reads) from read_files_fastqc
-// 
-//     output:
-//     file "*_fastqc.{zip,html}" into fastqc_results
-// 
-//     script:
-//     """
-//     fastqc -q $reads
-//     """
-// }
+process sampleSeq {
+    tag "Sample-${name}"
+    publishDir "${params.outdir}/Subsample", mode: 'copy'
+    
+    input:
+    set val(name), file(reads) from ch_raw_reads_seqtk
 
+    output:
+    set val(name), file("*.fastq.gz") into md5
+
+    script:
+    """
+    seqtk sample -s 12345 ${reads[0]} 0.9 | pigz -p ${task.cpus} - > $name.12345.R1.fastq.gz
+    seqtk sample -s 12345 ${reads[1]} 0.9 | pigz -p ${task.cpus} - > $name.12345.R2.fastq.gz
+    """
+}
+
+process md5sum {
+    tag "md5-${name}"
+    
+    input:
+    set val(name), file(reads) from md5
+
+    output:
+    file "*.md5" into md5cat
+
+    script:
+    """
+    md5sum $reads > $name.md5
+    """
+}
+
+process md5sum_collect {
+    tag "md5cat"
+    publishDir "${params.outdir}/Subsample", mode: 'copy'
+    
+    input:
+    file("*") from md5cat.collect()
+
+    output:
+    file "all.md5"
+
+    script:
+    """
+    cat *.md5 >> all.md5
+    """
+}
 
 
 /*
  * STEP 3 - Output Description HTML
  */
-process output_documentation {
-    publishDir "${params.outdir}/pipeline_info", mode: 'copy'
-
-    input:
-    file output_docs from ch_output_docs
-
-    output:
-    file "results_description.html"
-
-    script:
-    """
-    markdown_to_html.r $output_docs results_description.html
-    """
-}
-
+// process output_documentation {
+//     publishDir "${params.outdir}/pipeline_info", mode: 'copy'
+// 
+//     input:
+//     file output_docs from ch_output_docs
+// 
+//     output:
+//     file "results_description.html"
+// 
+//     script:
+//     """
+//     markdown_to_html.r $output_docs results_description.html
+//     """
+// }
 
 
 /*
