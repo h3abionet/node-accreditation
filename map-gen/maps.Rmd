@@ -17,7 +17,7 @@ if(!require('maps'))
 
 ```{r}
 # Note: set up an API key see documentation below
-register_google(key = "APIKey", write = TRUE)
+# register_google(key = "APIKey", write = TRUE)
 ```
 
 A very last minute, hacked together R script (apologies Python folks) to get plots set up for the SAB :)
@@ -31,13 +31,13 @@ myLocation <- c(lon = 14.547250, lat = 5.570445)
 # Note we grab the map using MA for Morocco.  Zoom here isn't great, 
 myMap <- get_googlemap(center=myLocation,
                  region='MA',
-                 source="google", 
+                 source="google",
                  maptype="terrain",
-                 crop=FALSE, 
+                 crop=FALSE,
                  #force=TRUE,
                  zoom = 3,
                  archiving = TRUE,
-                 filename = "Africa", 
+                 filename = "Africa",
                  where = "./maps")
 
 p <- ggmap(myMap)
@@ -49,7 +49,7 @@ Retrieve data from Google Sheet; necessary to capture any updated as needed.
 
 ```{r}
 # Comment/Uncomment to reload the data from Google (posted now to the WP folder)
-
+#drive_auth(email = TRUE)
 drive_download(
   "NA Status-Phase2",
   path = "nodeData.csv",
@@ -77,7 +77,7 @@ p + geom_point(aes(x = Longitude,
   theme(legend.position="bottom")
 ```
 
-Let's get a few numbers. How many have attempted node accreditation?
+Let's get a few numbers. How many have attempted or indicated an upcoming node accreditation?
 
 ```{r}
 nodeData$Attempted <- nodeData[,c("Variant.calling", 
@@ -102,7 +102,7 @@ apply(X=nodeData[,c("Variant.calling", "GWAS", "Microbiome", "RNA.Seq")],
       MARGIN = 2, FUN = function(y) length(grep(y, pattern = "Pending"))) 
 ```
 
-No one wants to take GWAS :(
+All but RNA-Seq.
 
 ```{r fig.width=6, fig.height=6}
 #png("africaAccred1.png", width = 6, height = 6, units = "in")
@@ -110,12 +110,22 @@ No one wants to take GWAS :(
 #nodeData %>% dplyr::filter(Attempted > 0) -> taken
 #nodeData %>% dplyr::filter(Attempted == 0) -> notTaken
 
-p2 <- p + 
+# show nodes that haven't taken exercise in black
+foo <- dplyr::filter(nodeData,Attempted == 0)
+foo <- dplyr::filter(foo, Country != 'USA')
+
+p2 <- p + geom_point(aes(x = Longitude, y = Latitude),
+               data = foo, size = 8, color = "black")
+p2
+```
+
+```{r fig.width=6, fig.height=6}
+p2 <- p2 + 
   # geom_point(aes(x = Longitude, y = Latitude),
   #              data = dplyr::filter(nodeData,Attempted == 0), size = 8, color = "black") + 
   geom_point(aes(x = Longitude, y = Latitude,
                    color = as.factor(Attempted)),
-               data = dplyr::filter(nodeData, Attempted > 0), size = 16) + 
+               data = dplyr::filter(nodeData, Attempted > 0), size = 12, alpha = 0.8) + 
   theme(legend.position=c(0.5,0.05),
         legend.direction="horizontal",
         legend.title=element_text(size=16),
@@ -128,13 +138,6 @@ p2 <- p +
 p2
 
 #dev.off()
-```
-
-```{r fig.width=6, fig.height=6}
-foo <- dplyr::filter(nodeData,Attempted == 0)
-foo <- dplyr::filter(foo, Country != 'USA')
-p2 + geom_point(aes(x = Longitude, y = Latitude),
-               data = foo, size = 8, color = "black")
 ```
 
 This handles the border issue with Morocco.
@@ -172,7 +175,7 @@ p <- p +
   #              data = dplyr::filter(nodeData,Attempted == 0), size = 8, color = "black") + 
   geom_point(aes(x = Longitude, y = Latitude,
                    color = as.factor(Attempted)),
-               data = dplyr::filter(nodeData, Attempted > 0), size = 16) + 
+               data = dplyr::filter(nodeData, Attempted > 0), size = 12) + 
   theme(legend.position=c(0.5,0.05),
         legend.direction="horizontal",
         legend.title=element_text(size=16),
@@ -217,9 +220,9 @@ Let's collapse the table down
 
 ```{r}
 years <- nodeData[,c("Variant.calling", "GWAS", "Microbiome", "RNA.Seq")] %>% 
-  apply(2, function(x) { sub('.*\\s\\((\\d+)\\)', "\\1", x) })
+  apply(2, function(x) { sub('(Pass|Review)\\s\\((\\d+)\\)', "\\2", x) })
 
-tot.yrs <- data.frame("Year" = 2014:2019)
+tot.yrs <- data.frame("Year" = 2014:2020)
 
 # TODO: redo as apply?
 for (acc in colnames(years)) {
@@ -243,8 +246,9 @@ tot.yrs
 tmp <- tot.yrs %>% reshape2::melt("Year", variable = "Exercise", value.name = "Total")
 
 ggplot(tmp, aes(x = Year, y = Total)) +  geom_col(aes(fill=Exercise)) +
-  scale_x_continuous("Year", breaks = 2014:2019, labels=2014:2019) +
-  scale_y_continuous("Total", breaks = 1:11, labels=1:11, minor_breaks = FALSE)
+  scale_x_continuous("Year", breaks = 2014:2020, labels=2014:2020) +
+  scale_y_continuous("Total", breaks = 1:11, labels=1:11, minor_breaks = FALSE) + 
+  ggtitle('Passed or In Review')
 
 ```
 
