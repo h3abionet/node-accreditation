@@ -49,7 +49,7 @@ Retrieve data from Google Sheet; necessary to capture any updated as needed.
 
 ```{r}
 # Comment/Uncomment to reload the data from Google (posted now to the WP folder)
-#drive_auth(email = TRUE)
+drive_auth(email = TRUE)
 drive_download(
   "NA Status-Phase2",
   path = "nodeData.csv",
@@ -61,28 +61,41 @@ Read in file:
 
 ```{r}
 nodeData <- read.csv('nodeData.csv',
-                     header=TRUE, colClasses = c("character", "character", "factor", "factor", "numeric", "numeric", "character", "character", "character", "character"),
+                     header=TRUE, 
+                     colClasses = c("character", "character", "character", "factor", "factor", "numeric", "numeric", "character", "character", "character", "character"),
                      na.strings = c("","NA")
                        )
 head(nodeData)
 ```
 
+We remove UIUC, since we aren't included in accreditations
+
+```{r}
+nodeData <- nodeData %>% filter(Short.Name != 'UIUC')
+```
+
 Okay the table is a bit of a hack but it's easy to edit.  We have the map, now let's plot just the coordinates:
 
 ```{r}
-p + geom_point(aes(x = Longitude, 
-                   y = Latitude,  
-                   colour = "black"), 
-               data = nodeData, size = 3) + 
+p + geom_point(data = nodeData, aes(x = Longitude, 
+                   y = Latitude), 
+               color = "red",
+               size = 3) + 
   theme(legend.position="bottom")
 ```
 
-Let's get a few numbers. How many have attempted or indicated an upcoming node accreditation?
+Reformat the column name for 
+
+```{r}
+names(nodeData)[names(nodeData) == 'Microbiome..16S.rRNA.'] <- '16S.rRNA'
+```
+
+Let's get a few numbers. How many have attempted or indicated interest in an upcoming node accreditation?
 
 ```{r}
 nodeData$Attempted <- nodeData[,c("Variant.calling", 
                                   "GWAS", 
-                                  "Microbiome", 
+                                  "16S.rRNA", 
                                   "RNA.Seq")] %>% is.na %>% `!` %>% rowSums %>% as.integer
 sum(nodeData$Attempted > 0)
 ```
@@ -93,16 +106,16 @@ How many have not attempted?
 sum(nodeData$Attempted == 0)
 ```
 
-We're now over 50%! This does include nodes expressing interest but who haven't started yet (a few in this group).
+We're well over 50%! This does include nodes expressing interest but who haven't started yet (a few in this group).
 
 How many are pending?
 
 ```{r}
-apply(X=nodeData[,c("Variant.calling", "GWAS", "Microbiome", "RNA.Seq")],
-      MARGIN = 2, FUN = function(y) length(grep(y, pattern = "Pending"))) 
+apply(X=nodeData[,c("Variant.calling", "GWAS", "16S.rRNA", "RNA.Seq")],
+      MARGIN = 2, FUN = function(y) length(grep(y, pattern = "Preparation"))) 
 ```
 
-All but RNA-Seq.
+All but 16S now!
 
 ```{r fig.width=6, fig.height=6}
 #png("africaAccred1.png", width = 6, height = 6, units = "in")
@@ -115,7 +128,7 @@ foo <- dplyr::filter(nodeData,Attempted == 0)
 foo <- dplyr::filter(foo, Country != 'USA')
 
 p2 <- p + geom_point(aes(x = Longitude, y = Latitude),
-               data = foo, size = 8, color = "black")
+               data = foo, size = 4, color = "black")
 p2
 ```
 
@@ -125,12 +138,11 @@ p2 <- p2 +
   #              data = dplyr::filter(nodeData,Attempted == 0), size = 8, color = "black") + 
   geom_point(aes(x = Longitude, y = Latitude,
                    color = as.factor(Attempted)),
-               data = dplyr::filter(nodeData, Attempted > 0), size = 12, alpha = 0.8) + 
+               data = dplyr::filter(nodeData, Attempted > 0), size = 6, alpha = 0.8) + 
   theme(legend.position=c(0.5,0.05),
         legend.direction="horizontal",
-        legend.title=element_text(size=16),
-        legend.text=element_text(size=16)) + 
-  scale_fill_brewer(palette="Dark2") +
+        legend.title=element_text(size=10),
+        legend.text=element_text(size=10)) + 
   xlab(element_blank()) + ylab(element_blank()) +
   labs(size = element_blank(),
        colour = "Num. exercises")
@@ -219,10 +231,10 @@ m %>% addProviderTiles(providers$Stamen.Toner)
 Let's collapse the table down
 
 ```{r}
-years <- nodeData[,c("Variant.calling", "GWAS", "Microbiome", "RNA.Seq")] %>% 
+years <- nodeData[,c("Variant.calling", "GWAS", "16S.rRNA", "RNA.Seq")] %>% 
   apply(2, function(x) { sub('(Pass|Review)\\s\\((\\d+)\\)', "\\2", x) })
 
-tot.yrs <- data.frame("Year" = 2014:2020)
+tot.yrs <- data.frame("Year" = 2014:2021)
 
 # TODO: redo as apply?
 for (acc in colnames(years)) {
@@ -240,13 +252,12 @@ tot.yrs[,2:5] <- sapply(tot.yrs[,2:5], as.integer)
 tot.yrs
 ```
 
-
 ```{r}
 # gather is not working here?
 tmp <- tot.yrs %>% reshape2::melt("Year", variable = "Exercise", value.name = "Total")
 
 ggplot(tmp, aes(x = Year, y = Total)) +  geom_col(aes(fill=Exercise)) +
-  scale_x_continuous("Year", breaks = 2014:2020, labels=2014:2020) +
+  scale_x_continuous("Year", breaks = 2014:2021, labels=2014:2021) +
   scale_y_continuous("Total", breaks = 1:11, labels=1:11, minor_breaks = FALSE) + 
   ggtitle('Passed or In Review')
 
