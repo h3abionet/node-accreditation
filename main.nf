@@ -248,8 +248,9 @@ process sampleSeq {
 
     script:
     """
-    seqtk sample -s 12345 ${reads[0]} 0.9 | pigz -p ${task.cpus} - > $name.12345.R1.fastq.gz
-    seqtk sample -s 12345 ${reads[1]} 0.9 | pigz -p ${task.cpus} - > $name.12345.R2.fastq.gz
+    seqtk sample -s ${params.setSeed} ${reads[0]} ${params.subsampleFrac} | pigz -p ${task.cpus} - > $name.${params.setSeed}.R1.fastq.gz
+    seqtk sample -s ${params.setSeed} ${reads[1]} ${params.subsampleFrac} | pigz -p ${task.cpus} - > $name.${params.setSeed}.R2.fastq.gz
+    
     """
 }
 
@@ -264,7 +265,7 @@ process md5sum {
 
     script:
     """
-    md5sum $reads > $name.md5
+    md5sum $reads > ${name}.md5
     """
 }
 
